@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PathFinder — Real World visualizer</title>
+  <meta name="description" content="Shortest path visualizer tracking live map data from OpenStreetMap."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     TOP HEADER (Swiggy-style)
+══════════════════════════════════════ -->
+<header class="top-bar">
+  <div class="top-bar-logo">
+    <div class="logo-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#FF6B35"/>
+        <circle cx="12" cy="9" r="2.5" fill="#fff"/>
+      </svg>
+    </div>
+    <span class="logo-text">PathFinder</span>
+    <span class="logo-tag">Live Maps</span>
+  </div>
+
+  <div class="header-location">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="#FF6B35"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+    <span id="headerCity">New Delhi, DL</span>
+  </div>
+
+  <div class="algo-pills" id="algoPills">
+    <button class="algo-pill active" data-algo="bfs">BFS</button>
+    <button class="algo-pill" data-algo="dfs">DFS</button>
+    <button class="algo-pill" data-algo="dijkstra">Dijkstra</button>
+    <button class="algo-pill" data-algo="astar">A*</button>
+    <button class="algo-pill" data-algo="greedy">Greedy</button>
+    <button class="algo-pill" data-algo="bibfs">Bi-BFS</button>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════
+     MAIN LAYOUT
+══════════════════════════════════════ -->
+<main class="app-layout">
+
+  <!-- ── LEFT DRAWER ── -->
+  <aside class="order-drawer" id="orderDrawer">
+    
+    <!-- Area Loader Card -->
+    <div class="overpass-card" id="overpassCard">
+       <div class="overpass-info">
+          🗺️ Pan map to desired area
+       </div>
+       <button class="load-roads-btn" id="btnLoadRoads">
+         🚀 Extract Real Street Network
+       </button>
+       <div class="overpass-subtext" id="overpassStatus">Graph empty. Load streets to begin.</div>
+    </div>
+
+    <!-- Route Inputs -->
+    <div class="route-card disabled" id="routeCard">
+      <div class="route-icon-col">
+        <div class="dot green-dot"></div>
+        <div class="route-line"></div>
+        <div class="dot red-dot"></div>
+      </div>
+      <div class="route-inputs">
+        <div class="input-group" id="pickupGroup">
+          <label class="input-label">PICKUP LOCATION</label>
+          <div class="location-input" id="pickupDisplay">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF6B35" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span id="pickupText">Click on street to set pickup</span>
+          </div>
+        </div>
+        <div class="input-divider"></div>
+        <div class="input-group" id="dropGroup">
+          <label class="input-label">DROP LOCATION</label>
+          <div class="location-input" id="dropDisplay">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+            <span id="dropText">Click on street to set drop</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mode indicator -->
+    <div class="mode-badge" id="modeBadge" style="display:none;">
+      <span class="mode-dot"></span>
+      <span id="modeText">Click street to place Pickup 📍</span>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="controls-overlay" id="controlsOverlay">
+      <button class="find-route-btn" id="btnFindRoute" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Find Shortest Route
+      </button>
+      <div class="secondary-actions">
+        <button class="sec-btn" id="btnRunAll" disabled>
+          Compare All
+        </button>
+        <button class="sec-btn danger" id="btnReset" disabled>
+          Reset
+        </button>
+      </div>
+    </div>
+
+    <!-- Speed -->
+    <div class="speed-card">
+      <div class="speed-header">
+        <span>Animation Speed</span>
+        <span class="speed-val-label" id="speedLabel">Medium</span>
+      </div>
+      <input type="range" class="speed-range" id="speedSlider" min="1" max="5" value="3"/>
+    </div>
+
+    <!-- Route Summary -->
+    <div class="summary-card hidden" id="summaryCard">
+      <div class="summary-header">
+        <div class="summary-algo-name" id="summaryAlgo">BFS</div>
+        <div class="summary-badge found" id="summaryBadge">Route Found</div>
+      </div>
+      <div class="summary-stats">
+        <div class="s-stat">
+          <div class="s-val" id="sTime">—</div>
+          <div class="s-lbl">Time (ms)</div>
+        </div>
+        <div class="s-stat">
+          <div class="s-val" id="sNodes">—</div>
+          <div class="s-lbl">Streets Explored</div>
+        </div>
+        <div class="s-stat">
+          <div class="s-val" id="sPath">—</div>
+          <div class="s-lbl">Route (m)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Comparison table -->
+    <div class="compare-card hidden" id="compareCard">
+      <div class="compare-title">Algorithm Comparison</div>
+      <table class="comp-table">
+        <thead><tr><th>Algo</th><th>Time</th><th>Explored</th><th>Path(m)</th></tr></thead>
+        <tbody id="compBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Algo Info blurb -->
+    <div class="algo-blurb" id="algoBlurb">
+      <div class="blurb-name" id="blurbName">Breadth-First Search</div>
+      <div class="blurb-text" id="blurbText">Explores layer-by-layer. Guarantees the path with fewest intersections.</div>
+    </div>
+
+  </aside>
+
+  <!-- ── MAP CONTAINER ── -->
+  <div class="map-wrapper" id="mapWrapper">
+    <div id="map" class="leaflet-map-element"></div>
+    
+    <!-- Progress bar overlay -->
+    <div class="map-progress-bar" id="mapProgress">
+      <div class="map-progress-fill" id="mapProgressFill"></div>
+    </div>
+
+    <!-- Running status chip -->
+    <div class="running-chip hidden" id="runningChip">
+      <span class="chip-spinner"></span>
+      <span id="chipText">Fetching roads...</span>
+    </div>
+  </div>
+
+</main>
+
+<div class="toast-msg" id="toast"></div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="script.js"></script>
+</body>
+</html>
+
