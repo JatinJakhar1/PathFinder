@@ -249,6 +249,44 @@ body {
 }
 .location-input.set span { color: var(--text-primary); font-weight: 500; }
 
+.manual-location-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.manual-location-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 8px 9px;
+  outline: none;
+}
+
+.manual-location-input:focus {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 2px rgba(255,107,53,0.12);
+}
+
+.manual-location-btn {
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--orange);
+  color: white;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0 10px;
+}
+
+.manual-location-btn:hover { background: var(--orange-dark); }
+.manual-location-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
 .input-divider {
   height: 1px;
   background: var(--border);
@@ -558,7 +596,10 @@ body {
 }
 
 .route-card.disabled {
-  opacity: 0.5;
+  opacity: 0.65;
+}
+
+.route-card.disabled .location-input {
   pointer-events: none;
 }
 

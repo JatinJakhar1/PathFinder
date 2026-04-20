@@ -32,7 +32,7 @@
 
   <div class="header-location">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="#FF6B35"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
-    <span id="headerCity">New Delhi, DL</span>
+    <span id="headerCity">Detecting location...</span>
   </div>
 
   <div class="algo-pills" id="algoPills">
@@ -78,6 +78,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF6B35" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             <span id="pickupText">Click on street to set pickup</span>
           </div>
+          <div class="manual-location-row">
+            <input type="text" class="manual-location-input" id="pickupManualInput" placeholder="Pickup address or lat,lng"/>
+            <button class="manual-location-btn" id="btnSetPickup" type="button">Set</button>
+          </div>
         </div>
         <div class="input-divider"></div>
         <div class="input-group" id="dropGroup">
@@ -85,6 +89,10 @@
           <div class="location-input" id="dropDisplay">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
             <span id="dropText">Click on street to set drop</span>
+          </div>
+          <div class="manual-location-row">
+            <input type="text" class="manual-location-input" id="dropManualInput" placeholder="Drop address or lat,lng"/>
+            <button class="manual-location-btn" id="btnSetDrop" type="button">Set</button>
           </div>
         </div>
       </div>
@@ -185,4 +193,3 @@
 <script src="script.js"></script>
 </body>
 </html>
-

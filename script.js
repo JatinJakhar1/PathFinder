@@ -56,6 +56,11 @@ let allResults = {};
 
 let startMarker = null;
 let endMarker = null;
+let currentLocationLatLng = null;
+let pendingManualLocations = {
+  pickup: null,
+  drop: null
+};
 
 // The Rider Marker
 let riderMarker = null;
@@ -77,6 +82,10 @@ const pickupDisplay = document.getElementById('pickupDisplay');
 const dropDisplay = document.getElementById('dropDisplay');
 const pickupText = document.getElementById('pickupText');
 const dropText = document.getElementById('dropText');
+const pickupManualInput = document.getElementById('pickupManualInput');
+const dropManualInput = document.getElementById('dropManualInput');
+const btnSetPickup = document.getElementById('btnSetPickup');
+const btnSetDrop = document.getElementById('btnSetDrop');
 
 const modeBadge = document.getElementById('modeBadge');
 const modeText = document.getElementById('modeText');
@@ -103,6 +112,9 @@ const chipText = document.getElementById('chipText');
 const toast = document.getElementById('toast');
 const headerCity = document.getElementById('headerCity');
 
+const DEFAULT_MAP_CENTER = [28.6304, 77.2177];
+const DEFAULT_MAP_ZOOM = 15;
+
 /* ============================================================
    SECTION 4: INITIALIZATION
    ============================================================ */
@@ -114,8 +126,8 @@ function init() {
 }
 
 function initLeaflet() {
-  // Initialize map centered roughly on Connaught Place, New Delhi
-  map = L.map('map', { zoomControl: false }).setView([28.6304, 77.2177], 15);
+  // Start with a usable fallback, then move to the user's browser location.
+  map = L.map('map', { zoomControl: false }).setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
   
   L.control.zoom({ position: 'bottomright' }).addTo(map);
 
@@ -133,11 +145,47 @@ function initLeaflet() {
   markersLayer.addTo(map);
 
   map.on('moveend', () => {
-    headerCity.textContent = `Lat: ${map.getCenter().lat.toFixed(4)}, Lng: ${map.getCenter().lng.toFixed(4)}`;
+    updateHeaderLocation();
   });
   
   // Custom click handler on map
   map.on('click', handleMapClick);
+
+  updateHeaderLocation();
+  centerMapOnCurrentLocation();
+}
+
+function updateHeaderLocation() {
+  const center = map.getCenter();
+  headerCity.textContent = `Lat: ${center.lat.toFixed(4)}, Lng: ${center.lng.toFixed(4)}`;
+}
+
+function centerMapOnCurrentLocation() {
+  if (!navigator.geolocation) {
+    showToast('Current location is not supported by this browser.');
+    return;
+  }
+
+  headerCity.textContent = 'Getting current location...';
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { latitude, longitude } = position.coords;
+      currentLocationLatLng = L.latLng(latitude, longitude);
+      map.setView(currentLocationLatLng, DEFAULT_MAP_ZOOM);
+      updateHeaderLocation();
+      suggestPickupFromCurrentLocation();
+      showToast('Map centered on your current location.');
+    },
+    () => {
+      updateHeaderLocation();
+      showToast('Location permission denied. Using default map area.');
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 60000
+    }
+  );
 }
 
 function setupEventListeners() {
@@ -153,6 +201,14 @@ function setupEventListeners() {
   btnFindRoute.addEventListener('click', startSimulation);
   btnReset.addEventListener('click', resetApp);
   btnRunAll.addEventListener('click', runAllAlgorithms);
+  btnSetPickup.addEventListener('click', () => applyManualLocation('pickup'));
+  btnSetDrop.addEventListener('click', () => applyManualLocation('drop'));
+  pickupManualInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') applyManualLocation('pickup');
+  });
+  dropManualInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') applyManualLocation('drop');
+  });
 
   algoPillsContainer.addEventListener('click', (e) => {
     if (e.target.classList.contains('algo-pill')) {
@@ -277,7 +333,9 @@ async function fetchOverpassData() {
     overpassStatus.textContent = `${nodesArray.length} intersections loaded.`;
     routeCard.classList.remove('disabled');
     btnLoadRoads.textContent = "Refresh Street Network";
-    setMode('pickup');
+    applyPendingManualLocations();
+    suggestPickupFromCurrentLocation();
+    setMode(startNode && endNode ? 'idle' : (startNode ? 'drop' : 'pickup'));
 
   } catch (error) {
     console.error(error);
@@ -303,6 +361,8 @@ function processOSMData(data) {
   
   startNode = null;
   endNode = null;
+  startMarker = null;
+  endMarker = null;
 
   // 1. Process all nodes
   data.elements.forEach(el => {
@@ -378,38 +438,127 @@ function drawBaseExtractedRoads() {
 function handleMapClick(e) {
   if (isRunning || nodesArray.length === 0 || placingPhase === 'idle') return;
 
-  const clickLatLng = e.latlng;
-  
-  // Find nearest graph node
+  placeRouteNode(placingPhase, e.latlng);
+}
+
+function findNearestNode(latLng) {
   let nearest = null;
   let minDist = Infinity;
   nodesArray.forEach(n => {
-    const d = clickLatLng.distanceTo(L.latLng(n.lat, n.lng));
+    const d = latLng.distanceTo(L.latLng(n.lat, n.lng));
     if (d < minDist) {
       minDist = d;
       nearest = n;
     }
   });
 
-  // If too far from any road
-  if (!nearest || minDist > 200) {
-    showToast("Click directly on a grey street!");
-    return;
+  return { nearest, minDist };
+}
+
+function placeRouteNode(type, latLng, label = '') {
+  if (isRunning || nodesArray.length === 0) return false;
+
+  const { nearest, minDist } = findNearestNode(latLng);
+  if (!nearest || minDist > 400) {
+    showToast(label ? "Location is outside the loaded street network." : "Click directly on a grey street!");
+    return false;
   }
 
-  if (placingPhase === 'pickup') {
+  if (type === 'pickup') {
     startNode = nearest;
     updatePin('pickup');
+    if (label) pickupManualInput.value = label;
     setMode('drop');
-  } else if (placingPhase === 'drop') {
-    if (nearest === startNode) return;
+  } else if (type === 'drop') {
+    if (nearest === startNode) {
+      showToast('Drop must be different from pickup.');
+      return false;
+    }
     endNode = nearest;
     updatePin('drop');
-    setMode('idle');
+    if (label) dropManualInput.value = label;
+    setMode(startNode ? 'idle' : 'pickup');
   }
 
   clearVisualization();
   updateUIState();
+  return true;
+}
+
+function suggestPickupFromCurrentLocation() {
+  if (!currentLocationLatLng || startNode || pendingManualLocations.pickup || nodesArray.length === 0) return;
+
+  const wasPlaced = placeRouteNode('pickup', currentLocationLatLng, 'Current location');
+  if (wasPlaced) {
+    showToast('Pickup suggested from your current location.');
+  }
+}
+
+async function applyManualLocation(type) {
+  if (isRunning) return;
+
+  const input = type === 'pickup' ? pickupManualInput : dropManualInput;
+  const value = input.value.trim();
+  if (!value) {
+    showToast(`Enter a ${type} address or coordinates.`);
+    return;
+  }
+
+  const latLng = await resolveLocationInput(value);
+  if (!latLng) {
+    showToast('Location not found. Try a clearer address or lat,lng.');
+    return;
+  }
+
+  if (nodesArray.length === 0) {
+    pendingManualLocations[type] = { latLng, label: value };
+    map.setView(latLng, DEFAULT_MAP_ZOOM);
+    showToast('Map moved there. Extract the street network, then set the point.');
+    return;
+  }
+
+  const placed = placeRouteNode(type, latLng, value);
+  if (placed) {
+    map.panTo(latLng);
+    showToast(`${type === 'pickup' ? 'Pickup' : 'Drop'} set from manual location.`);
+  }
+}
+
+async function resolveLocationInput(value) {
+  const coordinateMatch = value.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (coordinateMatch) {
+    const lat = Number(coordinateMatch[1]);
+    const lng = Number(coordinateMatch[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      return L.latLng(lat, lng);
+    }
+  }
+
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(value)}`;
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: 'application/json' }
+    });
+    if (!response.ok) return null;
+
+    const results = await response.json();
+    if (!Array.isArray(results) || results.length === 0) return null;
+
+    return L.latLng(Number(results[0].lat), Number(results[0].lon));
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+}
+
+function applyPendingManualLocations() {
+  ['pickup', 'drop'].forEach((type) => {
+    const pending = pendingManualLocations[type];
+    if (!pending) return;
+
+    const placed = placeRouteNode(type, pending.latLng, pending.label);
+    if (placed) pendingManualLocations[type] = null;
+  });
 }
 
 function updatePin(type) {
@@ -642,9 +791,14 @@ function resetApp() {
   endNode = null;
   placingPhase = 'pickup';
   allResults = {};
+  pendingManualLocations = { pickup: null, drop: null };
   
   if(startMarker) map.removeLayer(startMarker);
   if(endMarker) map.removeLayer(endMarker);
+  startMarker = null;
+  endMarker = null;
+  pickupManualInput.value = currentLocationLatLng ? 'Current location' : '';
+  dropManualInput.value = '';
   
   summaryCard.classList.add('hidden');
   compareCard.classList.add('hidden');
